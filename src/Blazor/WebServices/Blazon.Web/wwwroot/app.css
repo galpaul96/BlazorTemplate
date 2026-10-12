@@ -1,0 +1,260 @@
+html, body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100%;
+}
+
+body {
+    margin: 0;
+    font-size: .95rem;
+    line-height: 1.55;
+}
+
+:root {
+    --app-primary: #16806b;
+    --app-primary-hover: #116653;
+    --app-ink: #1e302b;
+    --app-muted: #65756f;
+    --app-surface: #fff;
+    --bs-body-bg: #f4f7f5;
+    --bs-body-color: #263831;
+    --bs-primary: #16806b;
+    --bs-primary-rgb: 22, 128, 107;
+    --bs-link-color: #147360;
+    --bs-link-hover-color: #0e5c4c;
+    --bs-border-color: #e0e8e3;
+    --bs-border-radius: .65rem;
+    --bs-border-radius-lg: .85rem;
+    --bs-focus-ring-color: rgb(22 128 107 / 25%);
+}
+
+a {
+    text-underline-offset: .15em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--app-ink);
+    letter-spacing: -.025em;
+}
+
+h1 {
+    font-size: clamp(1.75rem, 2.6vw, 2.25rem);
+    font-weight: 650;
+}
+
+.btn {
+    --bs-btn-font-weight: 550;
+    border-radius: .55rem;
+    transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--app-primary);
+    --bs-btn-border-color: var(--app-primary);
+    --bs-btn-hover-bg: var(--app-primary-hover);
+    --bs-btn-hover-border-color: var(--app-primary-hover);
+    --bs-btn-active-bg: #0d5848;
+    --bs-btn-active-border-color: #0d5848;
+}
+
+.form-control, .form-select {
+    border-color: #d4dfd8;
+    border-radius: .55rem;
+    min-height: 2.75rem;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #73b5a5;
+    box-shadow: 0 0 0 .22rem rgb(22 128 107 / 15%);
+}
+
+.form-floating > .form-control,
+.form-floating > .form-select {
+    min-height: 3.5rem;
+}
+
+.alert {
+    border-radius: .65rem;
+}
+
+.card, .modal-content {
+    border-color: var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: 0 .75rem 2rem rgb(31 62 49 / 6%);
+}
+
+.modal-backdrop.show {
+    opacity: .45;
+}
+
+.table {
+    --bs-table-bg: var(--app-surface);
+    --bs-table-striped-bg: #f7faf8;
+    --bs-table-hover-bg: #eff6f2;
+}
+
+.table > :not(caption) > * > * {
+    padding: .85rem 1rem;
+}
+
+.table thead th {
+    background: #f7faf8;
+    color: var(--app-muted);
+    font-size: .76rem;
+    font-weight: 650;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.home-panel {
+    background:
+        radial-gradient(ellipse at 92% 4%, rgb(22 128 107 / 11%), transparent 38%),
+        var(--app-surface);
+    max-width: 920px;
+    padding: clamp(2rem, 7vw, 5rem) !important;
+}
+
+.home-panel .lead {
+    max-width: 42rem;
+}
+
+.auth-page {
+    margin-inline: auto;
+    max-width: 1040px;
+}
+
+.auth-page-row {
+    align-items: stretch;
+}
+
+.auth-panel {
+    background: var(--app-surface);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    height: 100%;
+    padding: 1.5rem;
+}
+
+.auth-panel h2,
+.auth-panel h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.auth-panel hr {
+    border-color: var(--bs-border-color);
+    margin: 1.25rem 0;
+    opacity: 1;
+}
+
+.auth-panel .btn-lg {
+    font-size: 1rem;
+    padding: .75rem 1rem;
+}
+
+.auth-panel p {
+    margin-bottom: .55rem;
+}
+
+.account-panel {
+    background: var(--app-surface);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    padding: clamp(1rem, 3vw, 1.75rem);
+}
+
+.account-panel > h2 {
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+
+.account-panel hr {
+    border-color: var(--bs-border-color);
+    opacity: 1;
+}
+
+.account-panel .nav-pills .nav-link {
+    border-radius: .5rem;
+    color: #52665e;
+    margin-bottom: .2rem;
+}
+
+.account-panel .nav-pills .nav-link.active {
+    background: #e5f3ed;
+    color: #116653;
+}
+
+.page-heading {
+    margin-bottom: 1.5rem;
+}
+
+.admin-page-surface {
+    background: var(--app-surface);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    padding: 1.25rem;
+}
+
+.admin-role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+    gap: 1rem;
+}
+
+.admin-role-card {
+    min-width: 0;
+    padding: 1.1rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    background: var(--bs-body-bg);
+    box-shadow: 0 .25rem .8rem rgb(25 50 45 / 4%);
+}
+
+.admin-role-stats {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+    color: var(--bs-secondary-color);
+    font-size: .875rem;
+}
+
+.admin-role-stats strong {
+    color: var(--bs-emphasis-color);
+}
+
+h1:focus {
+    outline: none;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid var(--bs-success);
+}
+
+.invalid {
+    outline: 1px solid var(--bs-danger);
+}
+
+.validation-message {
+    color: var(--bs-danger);
+}
+
+.blazor-error-boundary {
+    background: var(--bs-danger);
+    border-radius: var(--bs-border-radius);
+    color: white;
+    padding: 1rem 1rem 1rem 3.5rem;
+    position: relative;
+}
+
+.blazor-error-boundary::before {
+    content: "!";
+    font-size: 1.5rem;
+    font-weight: 700;
+    left: 1.25rem;
+    position: absolute;
+    top: .55rem;
+}
+
+.darker-border-checkbox.form-check-input {
+    border-color: var(--bs-secondary-color);
+}

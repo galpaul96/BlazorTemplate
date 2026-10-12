@@ -1,0 +1,958 @@
+@page "/admin"
+@page "/admin/users"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Web
+@using Blazor.Web.Components.Admin
+@inject IdentityAdminService IdentityAdmin
+
+<PageTitle>Admin users</PageTitle>
+
+<div class="page-heading d-flex flex-wrap align-items-start justify-content-between gap-3">
+    <div>
+        <h1 class="mb-1">Users</h1>
+        <div class="text-body-secondary">Browse accounts, filter the catalog, and open a user for role, claim, and account controls.</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isLoading">Refresh</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success" role="alert">@successMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+<section class="border rounded p-3 mb-4 admin-users-filterbar">
+    <div class="row g-2 align-items-end">
+        <div class="col-lg-5">
+            <label class="form-label small text-body-secondary" for="userSearchInput">Search</label>
+            <input id="userSearchInput"
+                   class="form-control"
+                   placeholder="Email, username, phone, or id"
+                   @bind="searchTerm"
+                   @bind:event="oninput"
+                   @onkeydown="HandleSearchKeyDown"
+                   disabled="@isLoading" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label small text-body-secondary" for="roleFilterSelect">Role</label>
+            <select id="roleFilterSelect" class="form-select" @bind="selectedRoleFilter" disabled="@isLoading">
+                <option value="">All roles</option>
+                @foreach (var role in roleOptions)
+                {
+                    <option value="@role.Name">@role.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="statusFilterSelect">Status</label>
+            <select id="statusFilterSelect" class="form-select" @bind="selectedStatusFilter" disabled="@isLoading">
+                @foreach (var filter in Enum.GetValues<UserCatalogStatusFilter>())
+                {
+                    <option value="@filter">@GetStatusFilterLabel(filter)</option>
+                }
+            </select>
+        </div>
+        <div class="col-lg-2">
+            <div class="d-grid gap-2 d-sm-flex">
+                <button type="button" class="btn btn-primary flex-fill" @onclick="ApplyFiltersAsync" disabled="@isLoading">Apply</button>
+                <button type="button" class="btn btn-outline-secondary flex-fill" @onclick="ClearFiltersAsync" disabled="@isLoading">Clear</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+    <div class="small text-body-secondary">
+        Page @currentPage of @TotalPages - showing @users.Count of @TotalCount user@(TotalCount == 1 ? string.Empty : "s")
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="User pages">
+        <button type="button" class="btn btn-outline-primary" @onclick="PreviousPageAsync" disabled="@(isLoading || currentPage <= 1)">Previous</button>
+        <button type="button" class="btn btn-outline-primary" @onclick="NextPageAsync" disabled="@(isLoading || currentPage >= TotalPages)">Next</button>
+    </div>
+</div>
+
+@if (isLoading && userPage is null)
+{
+    <div class="d-flex align-items-center gap-2 text-body-secondary">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Loading users...</span>
+    </div>
+}
+else if (users.Count == 0)
+{
+    <div class="alert alert-info" role="alert">No users matched the current catalog filters.</div>
+}
+else
+{
+    <div class="admin-user-grid" aria-label="Users catalog">
+        @foreach (var user in users)
+        {
+            <button type="button" class="admin-user-card" @onclick="() => OpenUserAsync(user)" @key="user.Id">
+                <span class="admin-avatar" aria-hidden="true">@GetInitials(user)</span>
+                <span class="admin-user-card-body">
+                    <span class="admin-user-card-title">@GetDisplayName(user)</span>
+                    <span class="admin-user-card-subtitle">@GetSecondaryName(user)</span>
+                    <span class="admin-user-card-meta">
+                        @if (user.Roles.Count == 0)
+                        {
+                            <span class="badge text-bg-warning">No role</span>
+                        }
+                        else
+                        {
+                            @foreach (var role in user.Roles.Take(2))
+                            {
+                                <span class="badge text-bg-light">@role</span>
+                            }
+                            @if (user.Roles.Count > 2)
+                            {
+                                <span class="badge text-bg-light">+@(user.Roles.Count - 2)</span>
+                            }
+                        }
+                        <span>@user.Claims.Count claim@(user.Claims.Count == 1 ? string.Empty : "s")</span>
+                    </span>
+                    <span class="admin-user-card-badges">
+                        <span class="badge @GetPrimaryStatusBadgeClass(user)">@GetPrimaryStatusLabel(user)</span>
+                        @if (user.TwoFactorEnabled)
+                        {
+                            <span class="badge text-bg-light">2FA</span>
+                        }
+                        @if (user.AccessFailedCount > 0)
+                        {
+                            <span class="badge text-bg-danger">@user.AccessFailedCount failed</span>
+                        }
+                    </span>
+                </span>
+            </button>
+        }
+    </div>
+}
+
+@if (selectedUser is not null && userDetail is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable admin-user-modal">
+            <div class="modal-content">
+                <div class="modal-header align-items-start">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="admin-avatar admin-avatar-lg" aria-hidden="true">@GetInitials(selectedUser)</span>
+                        <div>
+                            <h2 class="modal-title h4 mb-1">@GetDisplayName(selectedUser)</h2>
+                            <div class="text-body-secondary small">@selectedUser.Id</div>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <span class="badge @GetPrimaryStatusBadgeClass(selectedUser)">@GetPrimaryStatusLabel(selectedUser)</span>
+                                <span class="badge @(selectedUser.EmailConfirmed ? "text-bg-success" : "text-bg-secondary")">
+                                    @(selectedUser.EmailConfirmed ? "Email confirmed" : "Email pending")
+                                </span>
+                                @if (!string.IsNullOrWhiteSpace(selectedUser.PhoneNumber))
+                                {
+                                    <span class="badge @(selectedUser.PhoneNumberConfirmed ? "text-bg-success" : "text-bg-secondary")">
+                                        @(selectedUser.PhoneNumberConfirmed ? "Phone confirmed" : "Phone pending")
+                                    </span>
+                                }
+                                @if (selectedUser.TwoFactorEnabled)
+                                {
+                                    <span class="badge text-bg-light">2FA enabled</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseModal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="row g-4">
+                        <div class="col-xl-4">
+                            <section class="admin-modal-section">
+                                <h3 class="h6 text-uppercase text-body-secondary">Account state</h3>
+                                <dl class="row small mb-0 g-2">
+                                    <dt class="col-5 text-body-secondary fw-normal">Email</dt>
+                                    <dd class="col-7 mb-0">@DisplayValue(selectedUser.Email)</dd>
+
+                                    <dt class="col-5 text-body-secondary fw-normal">Username</dt>
+                                    <dd class="col-7 mb-0">@DisplayValue(selectedUser.UserName)</dd>
+
+                                    <dt class="col-5 text-body-secondary fw-normal">Phone</dt>
+                                    <dd class="col-7 mb-0">@DisplayValue(selectedUser.PhoneNumber)</dd>
+
+                                    <dt class="col-5 text-body-secondary fw-normal">Lockout</dt>
+                                    <dd class="col-7 mb-0">
+                                        @if (selectedUser.LockoutEnd.HasValue && selectedUser.LockoutEnd.Value > DateTimeOffset.UtcNow)
+                                        {
+                                            <span>@selectedUser.LockoutEnd.Value.ToLocalTime().ToString("g")</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Not locked</span>
+                                        }
+                                    </dd>
+
+                                    <dt class="col-5 text-body-secondary fw-normal">Lockout protection</dt>
+                                    <dd class="col-7 mb-0">@(selectedUser.LockoutEnabled ? "Enabled" : "Disabled")</dd>
+
+                                    <dt class="col-5 text-body-secondary fw-normal">Access failures</dt>
+                                    <dd class="col-7 mb-0">@selectedUser.AccessFailedCount</dd>
+                                </dl>
+                            </section>
+
+                            <section class="admin-modal-section mt-3">
+                                <h3 class="h6 text-uppercase text-body-secondary">Access controls</h3>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-6">
+                                        <select class="form-select form-select-sm" @bind="userDetail.LockDays" disabled="@isSaving">
+                                            <option value="1">1 day</option>
+                                            <option value="7">7 days</option>
+                                            <option value="30">30 days</option>
+                                            <option value="90">90 days</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6 d-grid">
+                                        <button type="button" class="btn btn-sm btn-outline-warning" @onclick="LockSelectedUserAsync" disabled="@isSaving">
+                                            Lock account
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="DisableSelectedUserAsync" disabled="@isSaving">Disable user</button>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="EnableSelectedUserAsync" disabled="@isSaving">Enable and unlock</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ToggleSelectedUserLockoutAsync" disabled="@isSaving">
+                                        @(selectedUser.LockoutEnabled ? "Disable lockout protection" : "Enable lockout protection")
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ResetSelectedUserFailuresAsync" disabled="@(isSaving || selectedUser.AccessFailedCount == 0)">Reset failed attempts</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ResetSelectedUserAuthenticatorAsync" disabled="@isSaving">Reset authenticator and 2FA</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RevokeSelectedUserSessionsAsync" disabled="@isSaving">Revoke active sessions</button>
+                                </div>
+                            </section>
+                        </div>
+
+                        <div class="col-xl-8">
+                            <div class="row g-3">
+                                <div class="col-lg-6">
+                                    <section class="admin-modal-section h-100">
+                                        <h3 class="h6 text-uppercase text-body-secondary">Profile</h3>
+                                        <div class="vstack gap-2">
+                                            <label class="form-label small mb-0" for="profileUserName">Username</label>
+                                            <input id="profileUserName" class="form-control form-control-sm" @bind="userDetail.UserName" @bind:event="oninput" disabled="@isSaving" />
+
+                                            <label class="form-label small mb-0" for="profileEmail">Email</label>
+                                            <input id="profileEmail" class="form-control form-control-sm" @bind="userDetail.Email" @bind:event="oninput" disabled="@isSaving" />
+
+                                            <div class="form-check">
+                                                <input id="profileEmailConfirmed" class="form-check-input" type="checkbox" @bind="userDetail.EmailConfirmed" disabled="@isSaving" />
+                                                <label class="form-check-label small" for="profileEmailConfirmed">Email confirmed</label>
+                                            </div>
+
+                                            <label class="form-label small mb-0" for="profilePhone">Phone</label>
+                                            <input id="profilePhone" class="form-control form-control-sm" @bind="userDetail.PhoneNumber" @bind:event="oninput" disabled="@isSaving" />
+
+                                            <div class="form-check">
+                                                <input id="profilePhoneConfirmed" class="form-check-input" type="checkbox" @bind="userDetail.PhoneNumberConfirmed" disabled="@isSaving" />
+                                                <label class="form-check-label small" for="profilePhoneConfirmed">Phone confirmed</label>
+                                            </div>
+
+                                            <div class="d-flex flex-wrap gap-2 pt-1">
+                                                <button type="button" class="btn btn-sm btn-primary" @onclick="SaveSelectedUserProfileAsync" disabled="@IsProfileSaveDisabled">Save profile</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedUserPhoneAsync" disabled="@(isSaving || string.IsNullOrWhiteSpace(selectedUser.PhoneNumber))">Clear phone</button>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+
+                                <div class="col-lg-6">
+                                    <section class="admin-modal-section h-100">
+                                        <h3 class="h6 text-uppercase text-body-secondary">Password reset</h3>
+                                        <label class="form-label small" for="temporaryPassword">Temporary password</label>
+                                        <div class="input-group input-group-sm">
+                                            <input id="temporaryPassword" class="form-control" type="password" @bind="userDetail.TemporaryPassword" @bind:event="oninput" disabled="@isSaving" />
+                                            <button type="button" class="btn btn-outline-primary" @onclick="SetSelectedUserTemporaryPasswordAsync" disabled="@IsTemporaryPasswordDisabled">Set</button>
+                                        </div>
+                                        <div class="small text-body-secondary mt-2">
+                                            This replaces the local Identity password or creates one for an external-login-only account.
+                                        </div>
+                                    </section>
+                                </div>
+
+                                <div class="col-lg-6">
+                                    <section class="admin-modal-section h-100">
+                                        <h3 class="h6 text-uppercase text-body-secondary">Roles</h3>
+                                        <div class="input-group input-group-sm mb-3">
+                                            <select class="form-select" @bind="userDetail.SelectedRoleName" disabled="@isSaving">
+                                                <option value="">Select role</option>
+                                                @foreach (var role in GetAssignableRoles(selectedUser))
+                                                {
+                                                    <option value="@role.Name">@role.Name</option>
+                                                }
+                                            </select>
+                                            <button type="button" class="btn btn-outline-primary" @onclick="AssignSelectedUserRoleAsync" disabled="@IsRoleAssignDisabled">Assign</button>
+                                        </div>
+
+                                        @if (selectedUser.Roles.Count == 0)
+                                        {
+                                            <div class="small text-body-secondary">No roles assigned.</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-flex flex-wrap gap-2">
+                                                @foreach (var role in selectedUser.Roles)
+                                                {
+                                                    <span class="badge text-bg-primary admin-removable-badge">
+                                                        @role
+                                                        <button type="button" class="btn btn-sm btn-link text-reset p-0 ms-1" @onclick="() => RemoveSelectedUserRoleAsync(role)" disabled="@isSaving" aria-label="Remove @role role">
+                                                            <span aria-hidden="true">&times;</span>
+                                                        </button>
+                                                    </span>
+                                                }
+                                            </div>
+                                        }
+                                    </section>
+                                </div>
+
+                                <div class="col-lg-6">
+                                    <section class="admin-modal-section h-100">
+                                        <h3 class="h6 text-uppercase text-body-secondary">Claims</h3>
+                                        <div class="row g-2 mb-3">
+                                            <div class="col-sm-5">
+                                                <input class="form-control form-control-sm" placeholder="Type" @bind="userDetail.NewClaimType" @bind:event="oninput" disabled="@isSaving" />
+                                            </div>
+                                            <div class="col-sm-5">
+                                                <input class="form-control form-control-sm" placeholder="Value" @bind="userDetail.NewClaimValue" @bind:event="oninput" disabled="@isSaving" />
+                                            </div>
+                                            <div class="col-sm-2 d-grid">
+                                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AssignSelectedUserClaimAsync" disabled="@IsClaimAssignDisabled">Add</button>
+                                            </div>
+                                        </div>
+
+                                        @if (selectedUser.Claims.Count == 0)
+                                        {
+                                            <div class="small text-body-secondary">No claims assigned.</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-flex flex-wrap gap-2">
+                                                @foreach (var claim in selectedUser.Claims)
+                                                {
+                                                    <span class="badge text-bg-secondary admin-removable-badge">
+                                                        @claim.Type: @claim.Value
+                                                        <button type="button" class="btn btn-sm btn-link text-reset p-0 ms-1" @onclick="() => RemoveSelectedUserClaimAsync(claim)" disabled="@isSaving" aria-label="Remove @claim.Type claim">
+                                                            <span aria-hidden="true">&times;</span>
+                                                        </button>
+                                                    </span>
+                                                }
+                                            </div>
+                                        }
+                                    </section>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+<style>
+    .admin-users-filterbar {
+        background-color: var(--bs-tertiary-bg);
+    }
+
+    .admin-user-grid {
+        display: grid;
+        gap: .75rem;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+    }
+
+    .admin-user-card {
+        align-items: stretch;
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius);
+        color: var(--bs-body-color);
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+        min-height: 10.5rem;
+        padding: .85rem;
+        text-align: left;
+        transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+
+    .admin-user-card:hover,
+    .admin-user-card:focus {
+        border-color: var(--bs-primary);
+        box-shadow: 0 .5rem 1rem rgb(0 0 0 / 10%);
+        outline: none;
+        transform: translateY(-2px);
+    }
+
+    .admin-avatar {
+        align-items: center;
+        background: var(--bs-secondary-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 50%;
+        color: var(--bs-emphasis-color);
+        display: inline-flex;
+        flex: 0 0 auto;
+        font-size: .8rem;
+        font-weight: 700;
+        height: 2.25rem;
+        justify-content: center;
+        width: 2.25rem;
+    }
+
+    .admin-avatar-lg {
+        font-size: 1rem;
+        height: 3rem;
+        width: 3rem;
+    }
+
+    .admin-user-card-body {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: .45rem;
+        min-width: 0;
+    }
+
+    .admin-user-card-title,
+    .admin-user-card-subtitle {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .admin-user-card-title {
+        font-size: .92rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .admin-user-card-subtitle,
+    .admin-user-card-meta {
+        color: var(--bs-secondary-color);
+        font-size: .76rem;
+        line-height: 1.25;
+    }
+
+    .admin-user-card-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .45rem;
+    }
+
+    .admin-user-card-badges {
+        align-items: flex-start;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .35rem;
+        margin-top: auto;
+    }
+
+    .admin-user-modal {
+        max-width: min(1180px, calc(100vw - 2rem));
+    }
+
+    .admin-modal-section {
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius);
+        padding: 1rem;
+    }
+
+    .admin-removable-badge {
+        align-items: center;
+        display: inline-flex;
+        gap: .15rem;
+        white-space: normal;
+    }
+
+</style>
+
+@code {
+    private const int PageSize = 35;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private PagedResult<UserCatalogItem>? userPage;
+    private IReadOnlyList<RoleSummary> roleOptions = [];
+    private List<UserCatalogItem> users = [];
+    private UserCatalogItem? selectedUser;
+    private UserDetailState? userDetail;
+    private int currentPage = 1;
+    private string? searchTerm;
+    private string? selectedRoleFilter;
+    private string? currentAdminUserId;
+    private UserCatalogStatusFilter selectedStatusFilter = UserCatalogStatusFilter.All;
+    private bool isLoading;
+    private bool isSaving;
+    private string? successMessage;
+    private string? errorMessage;
+
+    private int TotalCount => userPage?.TotalCount ?? 0;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
+
+    private bool IsProfileSaveDisabled =>
+        isSaving ||
+        userDetail is null ||
+        string.IsNullOrWhiteSpace(userDetail.UserName);
+
+    private bool IsTemporaryPasswordDisabled =>
+        isSaving ||
+        userDetail is null ||
+        string.IsNullOrWhiteSpace(userDetail.TemporaryPassword);
+
+    private bool IsRoleAssignDisabled =>
+        isSaving ||
+        userDetail is null ||
+        selectedUser is null ||
+        string.IsNullOrWhiteSpace(userDetail.SelectedRoleName);
+
+    private bool IsClaimAssignDisabled =>
+        isSaving ||
+        userDetail is null ||
+        selectedUser is null ||
+        string.IsNullOrWhiteSpace(userDetail.NewClaimType);
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentAdminUserId = await GetCurrentUserIdAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            roleOptions = await IdentityAdmin.GetRolesAsync();
+            userPage = await IdentityAdmin.GetUsersAsync(
+                currentPage,
+                PageSize,
+                searchTerm,
+                selectedRoleFilter,
+                selectedStatusFilter);
+            users = userPage.Items.ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            users = [];
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        currentPage = 1;
+        await LoadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        searchTerm = null;
+        selectedRoleFilter = null;
+        selectedStatusFilter = UserCatalogStatusFilter.All;
+        currentPage = 1;
+        await LoadAsync();
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ApplyFiltersAsync();
+        }
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (currentPage <= 1)
+        {
+            return;
+        }
+
+        currentPage--;
+        await LoadAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (currentPage >= TotalPages)
+        {
+            return;
+        }
+
+        currentPage++;
+        await LoadAsync();
+    }
+
+    private async Task OpenUserAsync(UserCatalogItem user)
+    {
+        selectedUser = await IdentityAdmin.GetUserAsync(user.Id) ?? user;
+        userDetail = UserDetailState.FromUser(selectedUser);
+        successMessage = null;
+        errorMessage = null;
+    }
+
+    private void CloseModal()
+    {
+        selectedUser = null;
+        userDetail = null;
+    }
+
+    private async Task<string?> GetCurrentUserIdAsync()
+    {
+        if (AuthenticationStateTask is null)
+        {
+            return null;
+        }
+
+        var authenticationState = await AuthenticationStateTask;
+        return authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    }
+
+    private async Task SaveSelectedUserProfileAsync()
+    {
+        if (selectedUser is null || userDetail is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.UpdateUserProfileAsync(
+            selectedUser.Id,
+            userDetail.UserName,
+            userDetail.Email,
+            userDetail.EmailConfirmed,
+            userDetail.PhoneNumber,
+            userDetail.PhoneNumberConfirmed));
+    }
+
+    private async Task LockSelectedUserAsync()
+    {
+        if (selectedUser is null || userDetail is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.LockUserAsync(selectedUser.Id, userDetail.LockDays));
+    }
+
+    private async Task DisableSelectedUserAsync()
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.DisableUserAsync(selectedUser.Id));
+    }
+
+    private async Task EnableSelectedUserAsync()
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.EnableUserAsync(selectedUser.Id));
+    }
+
+    private async Task ToggleSelectedUserLockoutAsync()
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.SetUserLockoutEnabledAsync(selectedUser.Id, !selectedUser.LockoutEnabled));
+    }
+
+    private async Task ResetSelectedUserFailuresAsync()
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.ResetUserAccessFailuresAsync(selectedUser.Id));
+    }
+
+    private async Task ResetSelectedUserAuthenticatorAsync()
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.ResetUserAuthenticatorAsync(selectedUser.Id));
+    }
+
+    private async Task RevokeSelectedUserSessionsAsync()
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.RevokeUserSessionsAsync(selectedUser.Id));
+    }
+
+    private async Task SetSelectedUserTemporaryPasswordAsync()
+    {
+        if (selectedUser is null || userDetail is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(
+            () => IdentityAdmin.SetTemporaryPasswordAsync(selectedUser.Id, userDetail.TemporaryPassword),
+            keepFormValues: false);
+    }
+
+    private async Task ClearSelectedUserPhoneAsync()
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.ClearUserPhoneAsync(selectedUser.Id));
+    }
+
+    private async Task AssignSelectedUserRoleAsync()
+    {
+        if (selectedUser is null || userDetail is null || string.IsNullOrWhiteSpace(userDetail.SelectedRoleName))
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(
+            () => IdentityAdmin.AssignRoleToUserAsync(selectedUser.Id, userDetail.SelectedRoleName),
+            keepFormValues: false);
+    }
+
+    private async Task RemoveSelectedUserRoleAsync(string roleName)
+    {
+        if (selectedUser is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(() => IdentityAdmin.RemoveRoleFromUserAsync(selectedUser.Id, roleName));
+    }
+
+    private async Task AssignSelectedUserClaimAsync()
+    {
+        if (selectedUser is null || userDetail is null)
+        {
+            return;
+        }
+
+        await CompleteUserOperationAsync(
+            () => IdentityAdmin.AddUserClaimAsync(selectedUser.Id, userDetail.NewClaimType, userDetail.NewClaimValue),
+            keepFormValues: false);
+    }
+
+    private async Task RemoveSelectedUserClaimAsync(UserClaimSummary claim)
+    {
+        await CompleteUserOperationAsync(() => IdentityAdmin.RemoveUserClaimAsync(claim.Id));
+    }
+
+    private async Task CompleteUserOperationAsync(Func<Task<AdminOperationResult>> operation, bool keepFormValues = true)
+    {
+        isSaving = true;
+        successMessage = null;
+        errorMessage = null;
+        var selectedUserId = selectedUser?.Id;
+
+        try
+        {
+            var result = await operation();
+            if (result.Succeeded)
+            {
+                successMessage = result.Message;
+                await LoadAsync();
+
+                if (!string.IsNullOrWhiteSpace(selectedUserId))
+                {
+                    selectedUser = await IdentityAdmin.GetUserAsync(selectedUserId);
+                    userDetail = selectedUser is null
+                        ? null
+                        : keepFormValues
+                            ? userDetail?.MergeUser(selectedUser) ?? UserDetailState.FromUser(selectedUser)
+                            : UserDetailState.FromUser(selectedUser);
+                }
+            }
+            else
+            {
+                errorMessage = result.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private IEnumerable<RoleSummary> GetAssignableRoles(UserCatalogItem user)
+    {
+        var assignedRoles = user.Roles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return roleOptions.Where(role => !assignedRoles.Contains(role.Name));
+    }
+
+    private static string GetDisplayName(UserCatalogItem user)
+    {
+        return user.Email ?? user.UserName ?? user.Id;
+    }
+
+    private static string GetSecondaryName(UserCatalogItem user)
+    {
+        if (!string.IsNullOrWhiteSpace(user.Email) && !string.Equals(user.Email, user.UserName, StringComparison.OrdinalIgnoreCase))
+        {
+            return user.UserName ?? user.Id;
+        }
+
+        return user.PhoneNumber ?? user.Id;
+    }
+
+    private static string GetInitials(UserCatalogItem user)
+    {
+        var source = GetDisplayName(user);
+        var parts = source
+            .Split([' ', '.', '@', '-', '_'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .ToList();
+
+        if (parts.Count == 0)
+        {
+            return "U";
+        }
+
+        return string.Concat(parts.Select(part => char.ToUpperInvariant(part[0])));
+    }
+
+    private static bool IsLockedOut(UserCatalogItem user)
+    {
+        return user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow;
+    }
+
+    private static string GetPrimaryStatusLabel(UserCatalogItem user)
+    {
+        if (user.IsDisabled)
+        {
+            return "Disabled";
+        }
+
+        if (IsLockedOut(user))
+        {
+            return "Locked";
+        }
+
+        return user.EmailConfirmed ? "Active" : "Pending";
+    }
+
+    private static string GetPrimaryStatusBadgeClass(UserCatalogItem user)
+    {
+        if (user.IsDisabled || IsLockedOut(user))
+        {
+            return "text-bg-danger";
+        }
+
+        return user.EmailConfirmed ? "text-bg-success" : "text-bg-secondary";
+    }
+
+    private static string GetStatusFilterLabel(UserCatalogStatusFilter filter)
+    {
+        return filter switch
+        {
+            UserCatalogStatusFilter.All => "All users",
+            UserCatalogStatusFilter.Active => "Active",
+            UserCatalogStatusFilter.EmailConfirmed => "Email confirmed",
+            UserCatalogStatusFilter.EmailPending => "Email pending",
+            UserCatalogStatusFilter.Locked => "Locked",
+            UserCatalogStatusFilter.Disabled => "Disabled",
+            UserCatalogStatusFilter.LockoutDisabled => "Lockout disabled",
+            UserCatalogStatusFilter.TwoFactorEnabled => "2FA enabled",
+            UserCatalogStatusFilter.AccessFailures => "Access failures",
+            UserCatalogStatusFilter.NoRoles => "No roles",
+            _ => filter.ToString()
+        };
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "Not set" : value;
+    }
+
+    private sealed class UserDetailState
+    {
+        public string? UserName { get; set; }
+
+        public string? Email { get; set; }
+
+        public bool EmailConfirmed { get; set; }
+
+        public string? PhoneNumber { get; set; }
+
+        public bool PhoneNumberConfirmed { get; set; }
+
+        public int LockDays { get; set; } = 7;
+
+        public string? SelectedRoleName { get; set; }
+
+        public string? NewClaimType { get; set; }
+
+        public string? NewClaimValue { get; set; }
+
+        public string? TemporaryPassword { get; set; }
+
+        public static UserDetailState FromUser(UserCatalogItem user)
+        {
+            return new UserDetailState
+            {
+                UserName = user.UserName,
+                Email = user.Email,
+                EmailConfirmed = user.EmailConfirmed,
+                PhoneNumber = user.PhoneNumber,
+                PhoneNumberConfirmed = user.PhoneNumberConfirmed
+            };
+        }
+
+        public UserDetailState MergeUser(UserCatalogItem user)
+        {
+            UserName = user.UserName;
+            Email = user.Email;
+            EmailConfirmed = user.EmailConfirmed;
+            PhoneNumber = user.PhoneNumber;
+            PhoneNumberConfirmed = user.PhoneNumberConfirmed;
+            SelectedRoleName = null;
+            NewClaimType = null;
+            NewClaimValue = null;
+            TemporaryPassword = null;
+            return this;
+        }
+    }
+}

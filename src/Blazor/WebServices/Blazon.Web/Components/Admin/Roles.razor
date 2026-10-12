@@ -1,0 +1,221 @@
+@page "/admin/roles"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using Blazor.Web.Components.Admin
+@inject IdentityAdminService IdentityAdmin
+
+<PageTitle>Admin roles</PageTitle>
+
+<div class="page-heading d-flex flex-wrap align-items-start justify-content-between gap-3">
+    <div>
+        <p class="text-uppercase text-body-secondary small fw-semibold mb-1">Identity admin</p>
+        <h1 class="mb-1">Roles</h1>
+        <div class="text-body-secondary">Create, rename, or remove application roles.</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isLoading">Refresh</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success" role="alert">@successMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+<section class="admin-page-surface mb-4">
+    <h2 class="h5 mb-3">Create role</h2>
+    <div class="input-group">
+        <input class="form-control" placeholder="Role name" @bind="newRoleName" @bind:event="oninput" disabled="@isSaving" />
+        <button type="button" class="btn btn-primary" @onclick="CreateRoleAsync" disabled="@IsCreateDisabled">Create</button>
+    </div>
+</section>
+
+@if (isLoading && roleRows.Count == 0)
+{
+    <div class="d-flex align-items-center gap-2 text-body-secondary">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Loading roles...</span>
+    </div>
+}
+else if (roleRows.Count == 0)
+{
+    <div class="alert alert-info" role="alert">No roles have been created yet.</div>
+}
+else
+{
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <div class="small text-body-secondary">Page @currentPage of @TotalPages · showing @VisibleRoles.Count of @FilteredRoles.Count roles</div>
+        <div class="d-flex gap-2 align-items-center">
+            <label for="roleSearch" class="visually-hidden">Search roles</label>
+            <input id="roleSearch" class="form-control form-control-sm" placeholder="Search roles" @bind="searchTerm" @bind:event="oninput" @bind:after="ResetPage" />
+            <div class="btn-group btn-group-sm" role="group" aria-label="Role pages">
+                <button type="button" class="btn btn-outline-primary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+                <button type="button" class="btn btn-outline-primary" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next</button>
+            </div>
+        </div>
+    </div>
+    <div class="admin-role-grid" aria-label="Roles catalog">
+        @foreach (var row in VisibleRoles)
+        {
+            <article class="admin-role-card" @key="row.Role.Id">
+                <div class="d-flex align-items-start justify-content-between gap-2">
+                    <div class="flex-grow-1">
+                        <label class="form-label small text-body-secondary mb-1" for="role-@row.Role.Id">Role name</label>
+                        <input id="role-@row.Role.Id" class="form-control" @bind="row.EditName" @bind:event="oninput" disabled="@(isSaving || IsBuiltIn(row.Role.Name))" />
+                    </div>
+                    <span class="badge text-bg-light mt-4">@(IsBuiltIn(row.Role.Name) ? "Built-in" : "Custom")</span>
+                </div>
+                <div class="admin-role-stats"><span><strong>@row.Role.UserCount</strong> user@(row.Role.UserCount == 1 ? "" : "s")</span><span><strong>@row.Role.ClaimCount</strong> claim@(row.Role.ClaimCount == 1 ? "" : "s")</span></div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => UpdateRoleAsync(row)" disabled="@IsUpdateDisabled(row)">Save name</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RequestDeleteRole(row)" disabled="@(isSaving || IsBuiltIn(row.Role.Name) || row.Role.UserCount > 0)">Remove</button>
+                </div>
+                @if (row.Role.UserCount > 0 && !IsBuiltIn(row.Role.Name))
+                {
+                    <div class="small text-body-secondary mt-2">Remove members before deleting this role.</div>
+                }
+            </article>
+        }
+    </div>
+    @if (roleToDelete is not null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+            <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+                <div class="modal-header"><h2 class="modal-title h5">Remove @roleToDelete.Role.Name?</h2><button type="button" class="btn-close" aria-label="Cancel" @onclick="CancelDeleteRole"></button></div>
+                <div class="modal-body">This role will be permanently removed. This action cannot be undone.</div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" @onclick="CancelDeleteRole">Cancel</button><button type="button" class="btn btn-danger" @onclick="ConfirmDeleteRoleAsync" disabled="@isSaving">Remove role</button></div>
+            </div></div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+}
+
+@code {
+    private List<RoleRowState> roleRows = [];
+    private string? newRoleName;
+    private string? searchTerm;
+    private RoleRowState? roleToDelete;
+    private const int PageSize = 8;
+    private int currentPage = 1;
+    private bool isLoading;
+    private bool isSaving;
+    private string? successMessage;
+    private string? errorMessage;
+
+    private bool IsCreateDisabled => isSaving || string.IsNullOrWhiteSpace(newRoleName);
+    private List<RoleRowState> FilteredRoles => roleRows.Where(row => string.IsNullOrWhiteSpace(searchTerm) || row.Role.Name.Contains(searchTerm.Trim(), StringComparison.OrdinalIgnoreCase)).OrderBy(row => row.Role.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    private List<RoleRowState> VisibleRoles => FilteredRoles.Skip((currentPage - 1) * PageSize).Take(PageSize).ToList();
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredRoles.Count / (double)PageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var roles = await IdentityAdmin.GetRolesAsync();
+            roleRows = roles
+                .Select(role => new RoleRowState
+                {
+                    Role = role,
+                    EditName = role.Name
+                })
+                .ToList();
+            currentPage = Math.Min(currentPage, TotalPages);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            roleRows = [];
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CreateRoleAsync()
+    {
+        await CompleteOperationAsync(
+            () => IdentityAdmin.CreateRoleAsync(newRoleName),
+            () => newRoleName = null);
+    }
+
+    private async Task UpdateRoleAsync(RoleRowState row)
+    {
+        await CompleteOperationAsync(() => IdentityAdmin.UpdateRoleAsync(row.Role.Id, row.EditName));
+    }
+
+    private void RequestDeleteRole(RoleRowState row) => roleToDelete = row;
+
+    private void CancelDeleteRole() => roleToDelete = null;
+
+    private async Task ConfirmDeleteRoleAsync()
+    {
+        if (roleToDelete is null) return;
+        var row = roleToDelete;
+        roleToDelete = null;
+        await CompleteOperationAsync(() => IdentityAdmin.DeleteRoleAsync(row.Role.Id));
+    }
+
+    private void ResetPage() => currentPage = 1;
+    private void PreviousPage() { if (currentPage > 1) currentPage--; }
+    private void NextPage() { if (currentPage < TotalPages) currentPage++; }
+    private static bool IsBuiltIn(string? name) => string.Equals(name, "Admin", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "User", StringComparison.OrdinalIgnoreCase);
+
+    private async Task CompleteOperationAsync(Func<Task<AdminOperationResult>> operation, Action? afterSuccess = null)
+    {
+        isSaving = true;
+        successMessage = null;
+        errorMessage = null;
+
+        try
+        {
+            var result = await operation();
+            if (result.Succeeded)
+            {
+                successMessage = result.Message;
+                afterSuccess?.Invoke();
+                await LoadAsync();
+            }
+            else
+            {
+                errorMessage = result.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private bool IsUpdateDisabled(RoleRowState row)
+    {
+        return isSaving ||
+            string.IsNullOrWhiteSpace(row.EditName) ||
+            string.Equals(row.EditName.Trim(), row.Role.Name, StringComparison.Ordinal);
+    }
+
+    private sealed class RoleRowState
+    {
+        public required RoleSummary Role { get; init; }
+
+        public string? EditName { get; set; }
+    }
+}

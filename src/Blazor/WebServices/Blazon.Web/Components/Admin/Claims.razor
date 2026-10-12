@@ -1,0 +1,292 @@
+@page "/admin/claims"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using Blazor.Web.Components.Admin
+@inject IdentityAdminService IdentityAdmin
+
+<PageTitle>Admin claims</PageTitle>
+
+<div class="page-heading d-flex flex-wrap align-items-start justify-content-between gap-3">
+    <div>
+        <p class="text-uppercase text-body-secondary small fw-semibold mb-1">Identity admin</p>
+        <h1 class="mb-1">Claims</h1>
+        <div class="text-body-secondary">Create, update, or remove user and role claims.</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isLoading">Refresh</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success" role="alert">@successMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+<section class="admin-page-surface mb-4">
+    <h2 class="h5 mb-3">Create claim</h2>
+    <div class="row g-2">
+        <div class="col-md-2">
+            <select class="form-select" @bind="NewClaimSubject" disabled="@isSaving" aria-label="Claim target type">
+                <option value="@IdentityClaimSubject.Role">Role</option>
+                <option value="@IdentityClaimSubject.User">User</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            @if (NewClaimSubject == IdentityClaimSubject.Role)
+            {
+                <select class="form-select" @bind="newClaimSubjectId" disabled="@isSaving" aria-label="Claim role target">
+                    <option value="">Select role</option>
+                    @foreach (var role in roleOptions)
+                    {
+                        <option value="@role.Id">@role.Name</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <select class="form-select" @bind="newClaimSubjectId" disabled="@isSaving" aria-label="Claim user target">
+                    <option value="">Select user</option>
+                    @foreach (var user in userOptions)
+                    {
+                        <option value="@user.Id">@user.DisplayName</option>
+                    }
+                </select>
+            }
+        </div>
+        <div class="col-md-2">
+            <input class="form-control" placeholder="Type" @bind="newClaimType" @bind:event="oninput" disabled="@isSaving" />
+        </div>
+        <div class="col-md-2">
+            <input class="form-control" placeholder="Value" @bind="newClaimValue" @bind:event="oninput" disabled="@isSaving" />
+        </div>
+        <div class="col-md-2 d-grid">
+            <button type="button" class="btn btn-primary" @onclick="CreateClaimAsync" disabled="@IsCreateDisabled">Create</button>
+        </div>
+    </div>
+</section>
+
+@if (isLoading && claimRows.Count == 0)
+{
+    <div class="d-flex align-items-center gap-2 text-body-secondary">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Loading claims...</span>
+    </div>
+}
+else if (claimRows.Count == 0)
+{
+    <div class="alert alert-info" role="alert">No user or role claims have been created yet.</div>
+}
+else
+{
+    <div class="table-responsive border rounded">
+        <table class="table table-striped table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th scope="col">Scope</th>
+                    <th scope="col">Assigned to</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Value</th>
+                    <th scope="col" class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in claimRows)
+                {
+                    <tr @key="GetClaimKey(row.Claim)">
+                        <td>
+                            <span class="badge @GetSubjectBadgeClass(row.Claim.Subject)">@GetSubjectLabel(row.Claim.Subject)</span>
+                        </td>
+                        <td class="admin-claim-subject-cell">
+                            <div class="fw-semibold">@row.Claim.SubjectName</div>
+                            <div class="small text-body-secondary">@row.Claim.SubjectId</div>
+                        </td>
+                        <td class="admin-claim-input-cell">
+                            <input class="form-control form-control-sm" @bind="row.EditType" @bind:event="oninput" disabled="@isSaving" aria-label="Claim type for @row.Claim.SubjectName" />
+                        </td>
+                        <td class="admin-claim-input-cell">
+                            <input class="form-control form-control-sm" @bind="row.EditValue" @bind:event="oninput" disabled="@isSaving" aria-label="Claim value for @row.Claim.SubjectName" />
+                        </td>
+                        <td>
+                            <div class="d-flex justify-content-end gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => UpdateClaimAsync(row)" disabled="@IsUpdateDisabled(row)">
+                                    Update
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveClaimAsync(row)" disabled="@isSaving">
+                                    Remove
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<style>
+    .admin-claim-subject-cell {
+        min-width: 16rem;
+    }
+
+    .admin-claim-input-cell {
+        min-width: 12rem;
+    }
+</style>
+
+@code {
+    private List<ClaimRowState> claimRows = [];
+    private IReadOnlyList<RoleSummary> roleOptions = [];
+    private IReadOnlyList<UserOption> userOptions = [];
+    private IdentityClaimSubject newClaimSubject = IdentityClaimSubject.Role;
+    private string? newClaimSubjectId;
+    private string? newClaimType;
+    private string? newClaimValue;
+    private bool isLoading;
+    private bool isSaving;
+    private string? successMessage;
+    private string? errorMessage;
+
+    private IdentityClaimSubject NewClaimSubject
+    {
+        get => newClaimSubject;
+        set
+        {
+            if (newClaimSubject == value)
+            {
+                return;
+            }
+
+            newClaimSubject = value;
+            newClaimSubjectId = null;
+        }
+    }
+
+    private bool IsCreateDisabled =>
+        isSaving ||
+        string.IsNullOrWhiteSpace(newClaimSubjectId) ||
+        string.IsNullOrWhiteSpace(newClaimType);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            roleOptions = await IdentityAdmin.GetRolesAsync();
+            userOptions = await IdentityAdmin.GetUserOptionsAsync();
+            var claims = await IdentityAdmin.GetClaimAssignmentsAsync();
+            claimRows = claims
+                .Select(claim => new ClaimRowState
+                {
+                    Claim = claim,
+                    EditType = claim.Type,
+                    EditValue = claim.Value
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            claimRows = [];
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CreateClaimAsync()
+    {
+        await CompleteOperationAsync(
+            () => IdentityAdmin.CreateClaimAsync(NewClaimSubject, newClaimSubjectId, newClaimType, newClaimValue),
+            () =>
+            {
+                newClaimType = null;
+                newClaimValue = null;
+            });
+    }
+
+    private async Task UpdateClaimAsync(ClaimRowState row)
+    {
+        await CompleteOperationAsync(() => IdentityAdmin.UpdateClaimAsync(row.Claim.Subject, row.Claim.Id, row.EditType, row.EditValue));
+    }
+
+    private async Task RemoveClaimAsync(ClaimRowState row)
+    {
+        await CompleteOperationAsync(() => IdentityAdmin.RemoveClaimAsync(row.Claim.Subject, row.Claim.Id));
+    }
+
+    private async Task CompleteOperationAsync(Func<Task<AdminOperationResult>> operation, Action? afterSuccess = null)
+    {
+        isSaving = true;
+        successMessage = null;
+        errorMessage = null;
+
+        try
+        {
+            var result = await operation();
+            if (result.Succeeded)
+            {
+                successMessage = result.Message;
+                afterSuccess?.Invoke();
+                await LoadAsync();
+            }
+            else
+            {
+                errorMessage = result.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private bool IsUpdateDisabled(ClaimRowState row)
+    {
+        return isSaving ||
+            string.IsNullOrWhiteSpace(row.EditType) ||
+            (string.Equals(row.EditType?.Trim(), row.Claim.Type, StringComparison.Ordinal) &&
+            string.Equals(row.EditValue?.Trim() ?? string.Empty, row.Claim.Value, StringComparison.Ordinal));
+    }
+
+    private static string GetSubjectLabel(IdentityClaimSubject subject)
+    {
+        return subject == IdentityClaimSubject.Role ? "Role" : "User";
+    }
+
+    private static string GetSubjectBadgeClass(IdentityClaimSubject subject)
+    {
+        return subject == IdentityClaimSubject.Role ? "text-bg-primary" : "text-bg-secondary";
+    }
+
+    private static string GetClaimKey(ClaimAssignmentSummary claim)
+    {
+        return $"{claim.Subject}:{claim.Id}";
+    }
+
+    private sealed class ClaimRowState
+    {
+        public required ClaimAssignmentSummary Claim { get; init; }
+
+        public string? EditType { get; set; }
+
+        public string? EditValue { get; set; }
+    }
+}

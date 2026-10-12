@@ -1,0 +1,6 @@
+@ConnectX.Api_HostAddress = http://localhost:5110
+
+GET {{ConnectX.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

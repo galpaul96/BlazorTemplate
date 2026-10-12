@@ -1,0 +1,116 @@
+.sidebar-header {
+    align-items: center;
+    display: flex;
+    min-height: 4rem;
+    padding: 0 1rem;
+}
+
+.navbar-brand {
+    align-items: center;
+    color: #fff;
+    display: inline-flex;
+    font-size: 1.25rem;
+    font-weight: 600;
+    gap: .7rem;
+    text-decoration: none;
+}
+
+.navbar-brand::before {
+    align-items: center;
+    background: #16806b;
+    border-radius: .55rem;
+    color: #fff;
+    content: "C";
+    display: inline-flex;
+    font-size: .95rem;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+}
+
+.navbar-toggler {
+    appearance: none;
+    background: transparent;
+    border: 1px solid #496157;
+    border-radius: var(--bs-border-radius);
+    cursor: pointer;
+    height: 2.5rem;
+    position: absolute;
+    right: 1rem;
+    top: .75rem;
+    width: 2.75rem;
+}
+
+.navbar-toggler::before {
+    color: #fff;
+    content: "☰";
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.nav-scrollable {
+    display: none;
+    padding: .5rem .75rem .75rem;
+}
+
+.navbar-toggler:checked ~ .nav-scrollable {
+    display: block;
+}
+
+.nav-scrollable nav {
+    gap: .25rem;
+}
+
+.nav-scrollable .nav-link {
+    border-radius: var(--bs-border-radius);
+    color: #c8d6cf;
+    padding: .6rem .75rem;
+    text-align: left;
+    text-decoration: none;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.nav-scrollable .nav-link:hover,
+.nav-scrollable .nav-link.active {
+    background: #243c33;
+    color: #fff;
+}
+
+.nav-scrollable .nav-link.active {
+    background: #2c4d40;
+    box-shadow: inset 3px 0 #67c2a5;
+}
+
+.nav-scrollable .nav-section-label {
+    color: #91a99d;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    padding: 1rem .75rem .25rem;
+    text-transform: uppercase;
+}
+
+.nav-scrollable .nav-logout {
+    background: transparent;
+    border: 0;
+    width: 100%;
+}
+
+.nav-scrollable .nav-link:focus-visible,
+.navbar-brand:focus-visible,
+.navbar-toggler:focus-visible {
+    outline: 2px solid #91d9bf;
+    outline-offset: 2px;
+}
+
+@media (min-width: 768px) {
+    .navbar-toggler {
+        display: none;
+    }
+
+    .nav-scrollable {
+        display: block;
+        height: calc(100vh - 4rem);
+        overflow-y: auto;
+    }
+}

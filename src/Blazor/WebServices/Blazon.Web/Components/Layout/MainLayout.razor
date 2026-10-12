@@ -1,0 +1,19 @@
+﻿@inherits LayoutComponentBase
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <article class="content container-fluid">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui">
+    Something went wrong. Please refresh the page or try again later.
+    <a href="" class="reload">Refresh</a>
+    <a class="dismiss">🗙</a>
+</div>

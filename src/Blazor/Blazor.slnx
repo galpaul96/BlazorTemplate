@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/ApiServices/">
+    <Project Path="ApiServices/Blazor.Api.Ef/Blazor.Api.Ef.csproj" />
+    <Project Path="ApiServices/Blazor.Api.Services/Blazor.Api.Services.csproj" />
+    <Project Path="ApiServices/Blazor.Api/Blazor.Api.csproj" />
+  </Folder>
+  <Folder Name="/Common/">
+    <Project Path="Common/Blazor.Domain/Blazor.Domain.csproj" />
+    <Project Path="Common/Blazor.ServiceDefaults/Blazor.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/Services/">
+    <Project Path="Services/Blazor.MongoDb/Blazor.MongoDb.csproj" />
+  </Folder>
+  <Folder Name="/WebServices/">
+    <Project Path="WebServices/Blazon.Web/Blazor.Web.csproj" />
+    <Project Path="WebServices/Blazor.Web.Gateway/Blazor.Web.Gateway.csproj" />
+    <Project Path="WebServices/Blazor.Web.Services/Blazor.Web.Services.csproj" />
+  </Folder>
+  <Project Path="Blazor.AppHost/Blazor.AppHost.csproj" />
+</Solution>
